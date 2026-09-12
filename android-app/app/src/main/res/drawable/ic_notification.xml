@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <!-- Same mic glyph as assets/icon/micify_icon.svg, without the
+         background square - Android renders status-bar icons as a flat
+         white/alpha silhouette regardless, so plain white fill/stroke. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,18 a8,8 0 0 1 16,0 L40,30 a8,8 0 0 1 -16,0 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M18,30 a14,14 0 0 0 28,0" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M32,44 L32,52" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M22,52 L42,52" />
+</vector>

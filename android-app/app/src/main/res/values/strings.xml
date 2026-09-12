@@ -6,6 +6,6 @@
     <string name="button_stop">Stop</string>
     <string name="status_idle">Idle</string>
     <string name="status_scanning">Scanning for PCs on this network…</string>
-    <string name="status_streaming">Streaming…</string>
+    <string name="status_streaming">Streaming - see the notification for connection status and duration</string>
     <string name="status_permission_needed">Microphone permission is required</string>
 </resources>

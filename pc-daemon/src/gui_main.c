@@ -5,8 +5,9 @@
  * daemon binary stays fully usable headless/standalone either way.
  *
  * Auto-starts listening the moment the window opens - there is no manual
- * "connect" step. It just shows whether a phone is currently connected and,
- * if so, for how long.
+ * "connect" step and no port to configure (fixed at MICIFY_DEFAULT_PORT,
+ * matching the Android app's default). It just shows whether a phone is
+ * currently connected and, if so, for how long.
  */
 #include <gtk/gtk.h>
 #include <gio/gio.h>
@@ -14,9 +15,10 @@
 #include <string.h>
 #include <time.h>
 
+#define MICIFY_DEFAULT_PORT "44551"
+
 typedef struct {
     GtkWidget *window;
-    GtkWidget *port_entry;
     GtkWidget *usb_check;
     GtkWidget *status_label;
     GSubprocess *daemon_proc;
@@ -52,10 +54,7 @@ static void render_status(AppState *app) {
         gtk_label_set_text(GTK_LABEL(app->status_label), text);
         g_free(text);
     } else {
-        const char *port_text = gtk_entry_get_text(GTK_ENTRY(app->port_entry));
-        gchar *text = g_strdup_printf("Not connected - waiting for phone on port %s...", port_text);
-        gtk_label_set_text(GTK_LABEL(app->status_label), text);
-        g_free(text);
+        gtk_label_set_text(GTK_LABEL(app->status_label), "Not connected - waiting for phone...");
     }
 }
 
@@ -117,7 +116,6 @@ static void stop_daemon(AppState *app) {
 static void start_daemon(AppState *app) {
     stop_daemon(app);
 
-    const char *port_text = gtk_entry_get_text(GTK_ENTRY(app->port_entry));
     gboolean usb = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->usb_check));
 
     gchar *daemon_path = find_daemon_path();
@@ -128,10 +126,10 @@ static void start_daemon(AppState *app) {
 
     if (usb) {
         app->daemon_proc = g_subprocess_launcher_spawn(launcher, &error, daemon_path,
-                                                        "--port", port_text, "--usb", NULL);
+                                                        "--port", MICIFY_DEFAULT_PORT, "--usb", NULL);
     } else {
         app->daemon_proc = g_subprocess_launcher_spawn(launcher, &error, daemon_path,
-                                                        "--port", port_text, NULL);
+                                                        "--port", MICIFY_DEFAULT_PORT, NULL);
     }
     g_object_unref(launcher);
     g_free(daemon_path);
@@ -148,7 +146,7 @@ static void start_daemon(AppState *app) {
     start_reading(app, g_subprocess_get_stdout_pipe(app->daemon_proc));
 }
 
-static void on_config_changed(GtkWidget *widget, gpointer user_data) {
+static void on_usb_toggled(GtkWidget *widget, gpointer user_data) {
     (void) widget;
     start_daemon((AppState *) user_data);
 }
@@ -169,7 +167,7 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
 
     app->window = gtk_application_window_new(gtk_app);
     gtk_window_set_title(GTK_WINDOW(app->window), "Micify");
-    gtk_window_set_default_size(GTK_WINDOW(app->window), 360, 200);
+    gtk_window_set_default_size(GTK_WINDOW(app->window), 360, 160);
     gtk_container_set_border_width(GTK_CONTAINER(app->window), 16);
 
     gchar *dir = self_dir();
@@ -178,33 +176,22 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
     g_free(icon_path);
     g_free(dir);
 
-    GtkWidget *grid = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-    gtk_container_add(GTK_CONTAINER(app->window), grid);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    gtk_container_add(GTK_CONTAINER(app->window), box);
 
     GtkWidget *title = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(title), "<span size='large' weight='bold'>Micify</span>");
     gtk_widget_set_halign(title, GTK_ALIGN_START);
-    gtk_grid_attach(GTK_GRID(grid), title, 0, 0, 2, 1);
-
-    GtkWidget *port_label = gtk_label_new("Port:");
-    gtk_widget_set_halign(port_label, GTK_ALIGN_START);
-    gtk_grid_attach(GTK_GRID(grid), port_label, 0, 1, 1, 1);
-
-    app->port_entry = gtk_entry_new();
-    gtk_entry_set_text(GTK_ENTRY(app->port_entry), "44551");
-    g_signal_connect(app->port_entry, "activate", G_CALLBACK(on_config_changed), app);
-    gtk_grid_attach(GTK_GRID(grid), app->port_entry, 1, 1, 1, 1);
+    gtk_box_pack_start(GTK_BOX(box), title, FALSE, FALSE, 0);
 
     app->usb_check = gtk_check_button_new_with_label("USB mode (adb forward)");
-    g_signal_connect(app->usb_check, "toggled", G_CALLBACK(on_config_changed), app);
-    gtk_grid_attach(GTK_GRID(grid), app->usb_check, 0, 2, 2, 1);
+    g_signal_connect(app->usb_check, "toggled", G_CALLBACK(on_usb_toggled), app);
+    gtk_box_pack_start(GTK_BOX(box), app->usb_check, FALSE, FALSE, 0);
 
     app->status_label = gtk_label_new("Starting...");
     gtk_widget_set_halign(app->status_label, GTK_ALIGN_START);
     gtk_label_set_line_wrap(GTK_LABEL(app->status_label), TRUE);
-    gtk_grid_attach(GTK_GRID(grid), app->status_label, 0, 3, 2, 1);
+    gtk_box_pack_start(GTK_BOX(box), app->status_label, FALSE, FALSE, 0);
 
     g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete), app);
 
@@ -212,7 +199,7 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
 
     app->duration_timer_id = g_timeout_add_seconds(1, duration_tick, app);
 
-    /* Auto-start immediately - no manual "connect" step. */
+    /* Auto-start immediately - no manual "connect" step, no port to type. */
     start_daemon(app);
 }
 

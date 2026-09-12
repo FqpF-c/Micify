@@ -1,7 +1,9 @@
 package com.micify.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -27,17 +29,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
 
     private lateinit var discovery: PcDiscovery
-    private var streaming = false
-    private var pendingConnect: Pair<String, Int>? = null
+    private var pendingConnect: Triple<String, Int, String>? = null
 
-    private val requestMicPermission = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    private val requestPermissions = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
         val target = pendingConnect
         pendingConnect = null
-        if (granted && target != null) {
-            doConnect(target.first, target.second)
-        } else if (!granted) {
+        val micGranted = results[Manifest.permission.RECORD_AUDIO] ?: hasMicPermission()
+        if (micGranted && target != null) {
+            doConnect(target.first, target.second, target.third)
+        } else if (!micGranted) {
             statusText.text = getString(R.string.status_permission_needed)
         }
     }
@@ -60,17 +62,20 @@ class MainActivity : AppCompatActivity() {
         usbModeSwitch.setOnCheckedChangeListener { _, checked ->
             wifiSection.visibility = if (checked) View.GONE else View.VISIBLE
             usbSection.visibility = if (checked) View.VISIBLE else View.GONE
-            if (checked) discovery.stop() else discovery.start()
+            if (checked) discovery.stop() else if (!MicifyService.isRunning) discovery.start()
         }
 
-        usbConnectButton.setOnClickListener { connectRequestingPermission(USB_HOST, USB_PORT) }
+        usbConnectButton.setOnClickListener { connectRequestingPermissions(USB_HOST, USB_PORT, "USB") }
 
         stopButton.setOnClickListener { stopStreaming() }
+
+        refreshUiForServiceState()
     }
 
     override fun onStart() {
         super.onStart()
-        if (!usbModeSwitch.isChecked && !streaming) {
+        refreshUiForServiceState()
+        if (!usbModeSwitch.isChecked && !MicifyService.isRunning) {
             discovery.start()
         }
     }
@@ -78,6 +83,18 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         discovery.stop()
         super.onStop()
+    }
+
+    private fun refreshUiForServiceState() {
+        if (MicifyService.isRunning) {
+            statusText.text = getString(R.string.status_streaming)
+            stopButton.visibility = View.VISIBLE
+            usbModeSwitch.isEnabled = false
+        } else {
+            statusText.text = getString(R.string.status_idle)
+            stopButton.visibility = View.GONE
+            usbModeSwitch.isEnabled = true
+        }
     }
 
     private fun onDevicesChanged(devices: List<DiscoveredPc>) {
@@ -92,41 +109,56 @@ class MainActivity : AppCompatActivity() {
             val row = LayoutInflater.from(this).inflate(R.layout.item_device, deviceListContainer, false)
             row.findViewById<TextView>(R.id.deviceLabel).text = "${pc.name} (${pc.host})"
             row.findViewById<Button>(R.id.connectButton).setOnClickListener {
-                connectRequestingPermission(pc.host, pc.port)
+                connectRequestingPermissions(pc.host, pc.port, pc.name)
             }
             deviceListContainer.addView(row)
         }
     }
 
-    private fun connectRequestingPermission(host: String, port: Int) {
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+    private fun hasMicPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            doConnect(host, port)
+
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun connectRequestingPermissions(host: String, port: Int, label: String) {
+        val needed = mutableListOf<String>()
+        if (!hasMicPermission()) needed.add(Manifest.permission.RECORD_AUDIO)
+        if (!hasNotificationPermission()) needed.add(Manifest.permission.POST_NOTIFICATIONS)
+
+        if (needed.isEmpty()) {
+            doConnect(host, port, label)
         } else {
-            pendingConnect = host to port
-            requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
+            pendingConnect = Triple(host, port, label)
+            requestPermissions.launch(needed.toTypedArray())
         }
     }
 
-    private fun doConnect(host: String, port: Int) {
+    private fun doConnect(host: String, port: Int, label: String) {
         discovery.stop()
         val useTcp = usbModeSwitch.isChecked
-        val ok = NativeStreamer.start(host, port, useTcp)
-        if (ok) {
-            streaming = true
-            statusText.text = getString(R.string.status_streaming)
-            stopButton.visibility = View.VISIBLE
-            usbModeSwitch.isEnabled = false
-        } else {
-            statusText.text = "Failed to connect to $host:$port"
-            if (!useTcp) discovery.start()
+
+        val intent = Intent(this, MicifyService::class.java).apply {
+            action = MicifyService.ACTION_CONNECT
+            putExtra(MicifyService.EXTRA_HOST, host)
+            putExtra(MicifyService.EXTRA_PORT, port)
+            putExtra(MicifyService.EXTRA_USE_TCP, useTcp)
+            putExtra(MicifyService.EXTRA_LABEL, label)
         }
+        ContextCompat.startForegroundService(this, intent)
+
+        statusText.text = getString(R.string.status_streaming)
+        stopButton.visibility = View.VISIBLE
+        usbModeSwitch.isEnabled = false
     }
 
     private fun stopStreaming() {
-        NativeStreamer.stop()
-        streaming = false
+        val intent = Intent(this, MicifyService::class.java).apply { action = MicifyService.ACTION_STOP }
+        startService(intent)
+
         statusText.text = getString(R.string.status_idle)
         stopButton.visibility = View.GONE
         usbModeSwitch.isEnabled = true
@@ -134,9 +166,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (streaming) {
-            NativeStreamer.stop()
-        }
         discovery.stop()
         super.onDestroy()
     }
