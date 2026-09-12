@@ -1,0 +1,16 @@
+# pc-daemon (C)
+pc-daemon/micify-daemon
+pc-daemon/src/*.o
+pc-daemon/tools/test_sender
+
+# android-app (Gradle/Android Studio)
+android-app/.gradle/
+android-app/.idea/
+android-app/local.properties
+android-app/**/build/
+android-app/app/src/main/cpp/third_party/
+*.iml
+
+# misc
+*.wav
+*.log
