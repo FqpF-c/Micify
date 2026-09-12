@@ -1,11 +1,11 @@
 <resources>
     <string name="app_name">Micify</string>
-    <string name="label_host">PC IP address</string>
-    <string name="label_port">Port</string>
     <string name="label_usb_mode">USB mode (via adb forward)</string>
-    <string name="button_start">Start streaming</string>
+    <string name="label_usb_instructions">Connects to this device over USB. On the PC: run `adb forward tcp:44551 tcp:44551`, then start micify-daemon --usb.</string>
+    <string name="button_connect">Connect</string>
     <string name="button_stop">Stop</string>
     <string name="status_idle">Idle</string>
+    <string name="status_scanning">Scanning for PCs on this network…</string>
     <string name="status_streaming">Streaming…</string>
     <string name="status_permission_needed">Microphone permission is required</string>
 </resources>

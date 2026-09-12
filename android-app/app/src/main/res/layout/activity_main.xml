@@ -10,45 +10,64 @@
         android:layout_height="wrap_content"
         android:text="@string/app_name"
         android:textSize="24sp"
-        android:layout_marginBottom="24dp" />
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/label_host">
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/hostInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="text"
-            android:text="192.168.1.100" />
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/label_port">
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/portInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="number"
-            android:text="44551" />
-    </com.google.android.material.textfield.TextInputLayout>
+        android:layout_marginBottom="16dp" />
 
     <com.google.android.material.switchmaterial.SwitchMaterial
         android:id="@+id/usbModeSwitch"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
         android:text="@string/label_usb_mode" />
 
-    <Button
-        android:id="@+id/startStopButton"
+    <!-- Wi-Fi mode: auto-discovered PCs on the same network, no IP entry -->
+    <LinearLayout
+        android:id="@+id/wifiSection"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="@string/button_start" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/scanningLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/status_scanning"
+            android:layout_marginBottom="8dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:id="@+id/deviceListContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- USB mode: fixed 127.0.0.1, requires `adb forward` on the PC -->
+    <LinearLayout
+        android:id="@+id/usbSection"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_usb_instructions"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/usbConnectButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_connect" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/statusText"
@@ -56,5 +75,13 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="@string/status_idle" />
+
+    <Button
+        android:id="@+id/stopButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/button_stop"
+        android:visibility="gone" />
 
 </LinearLayout>

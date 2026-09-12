@@ -67,6 +67,28 @@ or too-glitchy behavior. Instead:
 - Packets arriving more than one buffer-depth late are dropped, not queued —
   stale audio is worse than a concealed gap.
 
+## Discovery beacon
+
+So the phone never needs a manually-typed IP address: while listening over
+Wi-Fi (UDP transport only - not applicable to USB mode, which always talks
+to `127.0.0.1` via `adb forward`), the daemon also broadcasts a small beacon
+every second to `255.255.255.255:44552`, a fixed port separate from the
+audio port so it never gets mixed up with the audio parser:
+
+| Offset | Size | Field        | Notes                                    |
+|-------:|-----:|--------------|-------------------------------------------|
+| 0      | 4    | `magic`      | `0x4449434D` ("MICD")                      |
+| 4      | 2    | `version`    | discovery protocol version, currently `1`  |
+| 6      | 2    | `audio_port` | the daemon's actual audio port to connect to |
+| 8      | 32   | `name`       | hostname, NUL-padded, truncated if longer  |
+
+Total: 40 bytes, sent unicast-broadcast (no reply expected). The phone just
+listens on UDP port 44552 and populates a list of `(name, sender IP,
+audio_port)` as beacons arrive, expiring entries it hasn't re-heard from in
+a few seconds. Tapping an entry connects straight to that IP/port - no text
+entry, matching how the rest of this protocol favors "just start sending
+audio" over handshakes.
+
 ## Session lifecycle
 
 - No explicit teardown packet. If no packet arrives for 3 seconds, the daemon

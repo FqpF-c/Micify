@@ -8,6 +8,7 @@
 #include "jitter.h"
 #include "backend.h"
 #include "pcm_ring.h"
+#include "discovery.h"
 
 static volatile sig_atomic_t g_stop = 0;
 static void on_sigint(int sig) { (void)sig; g_stop = 1; }
@@ -112,6 +113,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    discovery_t disc;
+    int discovery_running = 0;
+    if (transport == MICIFY_TRANSPORT_UDP) {
+        if (discovery_start(&disc, port) == 0) {
+            discovery_running = 1;
+        } else {
+            fprintf(stderr, "[micify] warning: discovery beacon failed to start (phone will need manual IP entry, if that path still exists)\n");
+        }
+    }
+
     fprintf(stderr, "[micify] listening on %s port %d, waiting for phone...\n",
             transport == MICIFY_TRANSPORT_UDP ? "UDP" : "TCP", port);
 
@@ -120,6 +131,7 @@ int main(int argc, char **argv) {
     }
 
     fprintf(stderr, "\n[micify] shutting down\n");
+    if (discovery_running) discovery_stop(&disc);
     net_receiver_stop(&nr);
     if (app.initialized) {
         backend_stop(app.backend);
