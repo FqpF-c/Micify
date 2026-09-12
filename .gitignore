@@ -1,5 +1,7 @@
 # pc-daemon (C)
 pc-daemon/micify-daemon
+pc-daemon/micify
+pc-daemon/micify_icon.png
 pc-daemon/src/*.o
 pc-daemon/tools/test_sender
 
@@ -8,8 +10,12 @@ android-app/.gradle/
 android-app/.idea/
 android-app/local.properties
 android-app/**/build/
+android-app/app/.cxx/
 android-app/app/src/main/cpp/third_party/
 *.iml
+
+# built/downloadable artifacts - attached to GitHub Releases instead of committed
+dist/
 
 # misc
 *.wav

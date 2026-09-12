@@ -1,12 +1,21 @@
-# micify-daemon (PC side)
+# Micify (PC side)
 
 Receives the phone's Opus audio stream and exposes it as a virtual
-microphone. Built and verified on this machine (PipeWire 1.6.8):
+microphone. Built and verified on this machine (PipeWire 1.6.8).
+
+Two binaries come out of `make`:
+- `micify-daemon` - the headless engine (CLI, scriptable).
+- `micify` - a simple GTK3 GUI (port field, USB-mode toggle, start/stop,
+  status) that just launches `micify-daemon` as a subprocess and reflects
+  its status; see `src/gui_main.c`. Needs `micify-daemon` and
+  `micify_icon.png` alongside it (already true in this directory, and in
+  the release tarball under `dist/`).
 
 ```bash
 make
-./micify-daemon --port 44551          # Wi-Fi (UDP)
-./micify-daemon --port 44551 --usb    # USB (TCP, behind `adb forward`)
+./micify-daemon --port 44551          # Wi-Fi (UDP), headless
+./micify-daemon --port 44551 --usb    # USB (TCP, behind `adb forward`), headless
+./micify                              # GUI
 ```
 
 The virtual mic ("Micify (phone mic)") only appears once the phone sends its

@@ -1,9 +1,11 @@
 # Micify Android app
 
 Kotlin UI + a C++/NDK capture pipeline (Oboe for low-latency AAudio capture,
-libopus for encoding). **Not build-tested in this dev environment** - there's
-no Android SDK/NDK installed here, only a Linux desktop toolchain. Needs
-Android Studio (or the command-line SDK/NDK + Gradle) to actually compile.
+libopus for encoding). Builds cleanly with the command-line SDK/NDK + Gradle
+(`./gradlew assembleDebug` - confirmed producing a correctly-signed,
+installable APK with both ABIs' native libs bundled). Not yet tested
+against a real phone/mic by a human - this machine has no Android device
+attached, only the ability to compile.
 
 ## One-time setup
 
@@ -20,9 +22,10 @@ the SDK/NDK on `PATH`). `ndkVersion` in `app/build.gradle.kts` pins a
 specific NDK release - adjust if Android Studio prompts to install a
 different one.
 
-The manifest's launcher icon is left as a placeholder system icon
-(`@android:drawable/sym_def_app_icon`); regenerate a real one via Android
-Studio's Image Asset tool before shipping.
+The launcher icon (`res/mipmap-*/ic_launcher*.png`) is generated from
+`assets/icon/micify_icon.svg` at the repo root - re-render it with
+`rsvg-convert` if you change the source SVG (see that file's history for
+the exact sizes used).
 
 ## Wi-Fi mode
 
