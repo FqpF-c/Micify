@@ -104,8 +104,20 @@ int net_receiver_start(net_receiver_t *nr, micify_transport_t transport, int por
         return -1;
     }
 
-    int reuse = 1;
-    setsockopt(nr->sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    /* SO_REUSEADDR is only set for TCP (USB mode), where it just lets us
+     * re-bind promptly after a restart instead of waiting out TIME_WAIT.
+     * Deliberately NOT set for UDP: on Linux, two UDP sockets can both
+     * bind the same port when both have SO_REUSEADDR, and the kernel then
+     * splits incoming datagrams between them somewhat arbitrarily - if a
+     * second daemon instance is accidentally left running, the phone's
+     * format-announce packet and its actual audio packets can land on
+     * *different* processes, so one shows "connected" while the other
+     * silently discards every audio packet it gets. Better to fail loudly
+     * on the second instance than to silently black-hole audio. */
+    if (transport == MICIFY_TRANSPORT_TCP) {
+        int reuse = 1;
+        setsockopt(nr->sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    }
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -115,6 +127,7 @@ int net_receiver_start(net_receiver_t *nr, micify_transport_t transport, int por
 
     if (bind(nr->sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
+        fprintf(stderr, "[micify] is another micify-daemon instance already running on port %d?\n", port);
         close(nr->sockfd);
         return -1;
     }
