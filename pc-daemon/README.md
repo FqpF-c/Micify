@@ -5,17 +5,17 @@ microphone. Built and verified on this machine (PipeWire 1.6.8).
 
 Two binaries come out of `make`:
 - `micify-daemon` - the headless engine (CLI, scriptable).
-- `micify` - a simple GTK3 GUI (port field, USB-mode toggle, start/stop,
-  status) that just launches `micify-daemon` as a subprocess and reflects
-  its status; see `src/gui_main.c`. Needs `micify-daemon` and
-  `micify_icon.png` alongside it (already true in this directory, and in
-  the release tarball under `dist/`).
+- `micify` - a simple GTK3 GUI that auto-starts listening the instant it
+  opens (no button to press) and just shows whether a phone is currently
+  connected and for how long; see `src/gui_main.c`. Needs `micify-daemon`
+  and `micify_icon.png` alongside it (already true in this directory, and
+  in the release tarball under `dist/`).
 
 ```bash
 make
 ./micify-daemon --port 44551          # Wi-Fi (UDP), headless
 ./micify-daemon --port 44551 --usb    # USB (TCP, behind `adb forward`), headless
-./micify                              # GUI
+./micify                              # GUI, auto-starts on launch
 ```
 
 The virtual mic ("Micify (phone mic)") only appears once the phone sends its
@@ -25,6 +25,22 @@ Check with:
 ```bash
 wpctl status
 ```
+
+## Firewall
+
+The daemon needs to *receive* UDP on its port (`44551` by default) from an
+external host (the phone) - most distros ship a default-deny inbound
+firewall, which silently drops those packets before the daemon ever sees
+them (symptom: the phone shows "streaming" but the PC never leaves "waiting
+for phone", and no virtual mic ever appears). If that happens:
+
+```bash
+sudo ufw allow 44551/udp        # ufw (Debian/Ubuntu/CachyOS default)
+# or: sudo firewall-cmd --add-port=44551/udp --permanent && sudo firewall-cmd --reload
+```
+
+The discovery beacon (port 44552) only needs to be *sent* by the PC, not
+received, so it isn't affected by this - only the audio port is.
 
 ## USB mode
 

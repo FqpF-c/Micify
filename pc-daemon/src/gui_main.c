@@ -3,20 +3,31 @@
  * the already-verified CLI daemon as a subprocess and reflects its status,
  * rather than re-implementing the audio pipeline in the GUI process. The
  * daemon binary stays fully usable headless/standalone either way.
+ *
+ * Auto-starts listening the moment the window opens - there is no manual
+ * "connect" step. It just shows whether a phone is currently connected and,
+ * if so, for how long.
  */
 #include <gtk/gtk.h>
 #include <gio/gio.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 typedef struct {
     GtkWidget *window;
     GtkWidget *port_entry;
     GtkWidget *usb_check;
-    GtkWidget *start_button;
     GtkWidget *status_label;
     GSubprocess *daemon_proc;
+
+    gboolean connected;
+    time_t connected_since;
+    guint duration_timer_id;
 } AppState;
+
+static void start_daemon(AppState *app);
+static void stop_daemon(AppState *app);
 
 static gchar *self_dir(void) {
     char exe_path[4096];
@@ -33,8 +44,33 @@ static gchar *find_daemon_path(void) {
     return candidate;
 }
 
-static void set_status(AppState *app, const char *text) {
-    gtk_label_set_text(GTK_LABEL(app->status_label), text);
+static void render_status(AppState *app) {
+    if (app->connected) {
+        long elapsed = (long) difftime(time(NULL), app->connected_since);
+        gchar *text = g_strdup_printf("Connected - streaming for %ld:%02ld",
+                                       elapsed / 60, elapsed % 60);
+        gtk_label_set_text(GTK_LABEL(app->status_label), text);
+        g_free(text);
+    } else {
+        const char *port_text = gtk_entry_get_text(GTK_ENTRY(app->port_entry));
+        gchar *text = g_strdup_printf("Not connected - waiting for phone on port %s...", port_text);
+        gtk_label_set_text(GTK_LABEL(app->status_label), text);
+        g_free(text);
+    }
+}
+
+static gboolean duration_tick(gpointer user_data) {
+    AppState *app = (AppState *) user_data;
+    if (app->connected) render_status(app);
+    return G_SOURCE_CONTINUE;
+}
+
+static void set_connected(AppState *app, gboolean connected) {
+    if (connected && !app->connected) {
+        app->connected_since = time(NULL);
+    }
+    app->connected = connected;
+    render_status(app);
 }
 
 static void read_daemon_output(GObject *source, GAsyncResult *res, gpointer user_data);
@@ -57,12 +93,12 @@ static void read_daemon_output(GObject *source, GAsyncResult *res, gpointer user
     const char *data = g_bytes_get_data(bytes, &size);
 
     if (size > 0 && app->daemon_proc) {
-        if (g_strstr_len(data, (gssize) size, "session started")) {
-            set_status(app, "Streaming - phone connected");
-        } else if (g_strstr_len(data, (gssize) size, "listening on")) {
-            set_status(app, "Waiting for phone to connect...");
-        } else if (g_strstr_len(data, (gssize) size, "re-announced")) {
-            set_status(app, "Streaming - phone reconnected");
+        if (g_strstr_len(data, (gssize) size, "session started") ||
+            g_strstr_len(data, (gssize) size, "phone reconnected") ||
+            g_strstr_len(data, (gssize) size, "re-announced")) {
+            set_connected(app, TRUE);
+        } else if (g_strstr_len(data, (gssize) size, "phone disconnected")) {
+            set_connected(app, FALSE);
         }
         start_reading(app, G_INPUT_STREAM(source));
     }
@@ -75,18 +111,11 @@ static void stop_daemon(AppState *app) {
         g_subprocess_send_signal(app->daemon_proc, SIGTERM);
         g_clear_object(&app->daemon_proc);
     }
-    gtk_button_set_label(GTK_BUTTON(app->start_button), "Start streaming");
-    set_status(app, "Idle");
+    set_connected(app, FALSE);
 }
 
-static void on_start_stop_clicked(GtkButton *button, gpointer user_data) {
-    AppState *app = (AppState *) user_data;
-    (void) button;
-
-    if (app->daemon_proc) {
-        stop_daemon(app);
-        return;
-    }
+static void start_daemon(AppState *app) {
+    stop_daemon(app);
 
     const char *port_text = gtk_entry_get_text(GTK_ENTRY(app->port_entry));
     gboolean usb = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->usb_check));
@@ -109,15 +138,19 @@ static void on_start_stop_clicked(GtkButton *button, gpointer user_data) {
 
     if (!app->daemon_proc) {
         gchar *msg = g_strdup_printf("Failed to start: %s", error ? error->message : "unknown error");
-        set_status(app, msg);
+        gtk_label_set_text(GTK_LABEL(app->status_label), msg);
         g_free(msg);
         if (error) g_error_free(error);
         return;
     }
 
-    gtk_button_set_label(GTK_BUTTON(app->start_button), "Stop");
-    set_status(app, "Starting...");
+    render_status(app);
     start_reading(app, g_subprocess_get_stdout_pipe(app->daemon_proc));
+}
+
+static void on_config_changed(GtkWidget *widget, gpointer user_data) {
+    (void) widget;
+    start_daemon((AppState *) user_data);
 }
 
 static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event, gpointer user_data) {
@@ -125,6 +158,7 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event, gpointer us
     (void) event;
     AppState *app = (AppState *) user_data;
     stop_daemon(app);
+    if (app->duration_timer_id) g_source_remove(app->duration_timer_id);
     gtk_main_quit();
     return FALSE;
 }
@@ -135,7 +169,7 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
 
     app->window = gtk_application_window_new(gtk_app);
     gtk_window_set_title(GTK_WINDOW(app->window), "Micify");
-    gtk_window_set_default_size(GTK_WINDOW(app->window), 340, 220);
+    gtk_window_set_default_size(GTK_WINDOW(app->window), 360, 200);
     gtk_container_set_border_width(GTK_CONTAINER(app->window), 16);
 
     gchar *dir = self_dir();
@@ -160,23 +194,26 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
 
     app->port_entry = gtk_entry_new();
     gtk_entry_set_text(GTK_ENTRY(app->port_entry), "44551");
+    g_signal_connect(app->port_entry, "activate", G_CALLBACK(on_config_changed), app);
     gtk_grid_attach(GTK_GRID(grid), app->port_entry, 1, 1, 1, 1);
 
     app->usb_check = gtk_check_button_new_with_label("USB mode (adb forward)");
+    g_signal_connect(app->usb_check, "toggled", G_CALLBACK(on_config_changed), app);
     gtk_grid_attach(GTK_GRID(grid), app->usb_check, 0, 2, 2, 1);
 
-    app->start_button = gtk_button_new_with_label("Start streaming");
-    g_signal_connect(app->start_button, "clicked", G_CALLBACK(on_start_stop_clicked), app);
-    gtk_grid_attach(GTK_GRID(grid), app->start_button, 0, 3, 2, 1);
-
-    app->status_label = gtk_label_new("Idle");
+    app->status_label = gtk_label_new("Starting...");
     gtk_widget_set_halign(app->status_label, GTK_ALIGN_START);
     gtk_label_set_line_wrap(GTK_LABEL(app->status_label), TRUE);
-    gtk_grid_attach(GTK_GRID(grid), app->status_label, 0, 4, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), app->status_label, 0, 3, 2, 1);
 
     g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete), app);
 
     gtk_widget_show_all(app->window);
+
+    app->duration_timer_id = g_timeout_add_seconds(1, duration_tick, app);
+
+    /* Auto-start immediately - no manual "connect" step. */
+    start_daemon(app);
 }
 
 int main(int argc, char **argv) {

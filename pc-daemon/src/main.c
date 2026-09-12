@@ -3,12 +3,15 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "net.h"
 #include "jitter.h"
 #include "backend.h"
 #include "pcm_ring.h"
 #include "discovery.h"
+
+#define MICIFY_DISCONNECT_TIMEOUT_SEC 3
 
 static volatile sig_atomic_t g_stop = 0;
 static void on_sigint(int sig) { (void)sig; g_stop = 1; }
@@ -19,6 +22,8 @@ typedef struct {
     backend_t *backend;
     int initialized;
     const char *device_name;
+    time_t last_packet_time;
+    int disconnect_announced;
 } app_state_t;
 
 static size_t next_pow2(size_t v) {
@@ -55,6 +60,8 @@ static void on_format(void *user, uint32_t sample_rate, uint8_t channels, uint8_
     }
 
     app->initialized = 1;
+    app->last_packet_time = time(NULL);
+    app->disconnect_announced = 0;
     fprintf(stderr, "[micify] session started: %u Hz, %u ch, %ums frames\n",
             sample_rate, channels, frame_ms);
 }
@@ -63,7 +70,26 @@ static void on_packet(void *user, uint32_t seq, uint32_t timestamp,
                        const unsigned char *payload, size_t len) {
     app_state_t *app = (app_state_t *)user;
     if (!app->initialized) return; /* wait for the format-announce packet first */
+
+    if (app->disconnect_announced) {
+        fprintf(stderr, "[micify] phone reconnected\n");
+        app->disconnect_announced = 0;
+    }
+    app->last_packet_time = time(NULL);
+
     jitter_on_packet(&app->jitter, seq, timestamp, payload, len);
+}
+
+/* Called from the main loop every ~200ms: the wire protocol has no
+ * teardown packet, so silence for a few seconds is how we detect the
+ * phone stopped sending (see docs/PROTOCOL.md "Session lifecycle"). */
+static void check_disconnect(app_state_t *app) {
+    if (!app->initialized || app->disconnect_announced) return;
+    if (time(NULL) - app->last_packet_time >= MICIFY_DISCONNECT_TIMEOUT_SEC) {
+        fprintf(stderr, "[micify] phone disconnected (no packets for %ds)\n",
+                MICIFY_DISCONNECT_TIMEOUT_SEC);
+        app->disconnect_announced = 1;
+    }
 }
 
 static void usage(const char *argv0) {
@@ -128,6 +154,7 @@ int main(int argc, char **argv) {
 
     while (!g_stop) {
         usleep(200 * 1000);
+        check_disconnect(&app);
     }
 
     fprintf(stderr, "\n[micify] shutting down\n");
